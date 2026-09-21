@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#ffffff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>かんじとえ</title>
+  <style>
+    :root { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif; color: #151515; background: #fff; }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { margin: 0; min-width: 320px; min-height: 100vh; min-height: 100dvh; overflow: hidden; background: #fff; }
+    button { font: inherit; }
+    .screen { min-height: 100vh; min-height: 100dvh; padding: max(24px, env(safe-area-inset-top)) max(32px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(32px, env(safe-area-inset-left)); }
+    #student-screen { display: grid; grid-template-rows: minmax(150px, 36vh) 1fr; gap: clamp(18px, 4vh, 42px); }
+    .kanji { display: grid; place-items: center; border: 4px solid #171717; border-radius: 28px; font-size: clamp(112px, 22vw, 250px); font-weight: 700; line-height: 1; }
+    .choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(16px, 3vw, 36px); align-items: stretch; }
+    .choice { border: 4px solid #171717; border-radius: 24px; background: #fff; min-height: 220px; display: grid; place-items: center; padding: 14px; cursor: pointer; touch-action: manipulation; }
+    .choice:focus-visible { outline: 6px solid #1259b6; outline-offset: 5px; }
+    .choice:active { background: #f2f2f2; transform: scale(.98); }
+    .choice svg { width: min(100%, 260px); height: min(100%, 200px); }
+    #message { position: fixed; inset: 0; z-index: 5; display: grid; place-items: center; background: rgba(255,255,255,.96); text-align: center; font-size: clamp(54px, 10vw, 130px); font-weight: 800; opacity: 0; pointer-events: none; transition: opacity .12s ease; }
+    #message.show { opacity: 1; }
+    #message.correct { color: #cf2028; }
+    #message.retry { color: #1c1c1c; font-size: clamp(40px, 7vw, 84px); }
+    #complete-screen { display: none; position: fixed; inset: 0; z-index: 4; place-items: center; text-align: center; font-size: clamp(48px, 8vw, 112px); font-weight: 800; line-height: 1.45; background: #fff; }
+    #complete-screen.show { display: grid; }
+    #teacher-trigger { position: fixed; right: 0; bottom: 0; width: 48px; height: 48px; z-index: 10; }
+    #teacher-screen { display: none; position: fixed; inset: 0; z-index: 20; background: #f6f6f6; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    #teacher-screen.show { display: block; }
+    .teacher-panel { max-width: 1120px; margin: 0 auto; background: #fff; border: 2px solid #222; border-radius: 20px; padding: clamp(22px, 4vw, 48px); }
+    h1 { margin: 0 0 24px; font-size: clamp(28px, 5vw, 48px); }
+    h2 { font-size: clamp(22px, 4vw, 34px); margin: 34px 0 14px; }
+    p, li { font-size: clamp(17px, 2.6vw, 23px); line-height: 1.6; }
+    .pin-row, .teacher-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+    input { min-width: 180px; font-size: 28px; padding: 12px; border: 2px solid #222; border-radius: 10px; }
+    .teacher-button { border: 2px solid #222; border-radius: 10px; background: #fff; padding: 13px 18px; font-size: 20px; cursor: pointer; }
+    .teacher-button.primary { background: #1d5db3; color: #fff; }
+    .teacher-button.danger { color: #a51c25; }
+    .teacher-check { display: grid; place-items: center; border: 3px solid #222; border-radius: 20px; min-height: 200px; font-size: clamp(110px, 20vw, 230px); font-weight: 800; margin: 14px 0; }
+    .notice { padding: 14px 18px; border-left: 6px solid #1d5db3; background: #eef5ff; }
+    table { border-collapse: collapse; width: 100%; min-width: 760px; font-size: 16px; }
+    th, td { border: 1px solid #333; padding: 10px; text-align: center; vertical-align: middle; }
+    th { background: #ededed; }
+    .history-wrap { overflow-x: auto; }
+    .empty { color: #555; }
+    @media (orientation: portrait) { .orientation-note { display: grid; } }
+    .orientation-note { display: none; position: fixed; inset: 0; z-index: 30; place-items: center; padding: 32px; background: #fff; font-size: clamp(32px, 8vw, 72px); font-weight: 700; text-align: center; }
+    @media (max-height: 520px) { .choice { min-height: 130px; } #student-screen { grid-template-rows: minmax(110px, 34vh) 1fr; gap: 12px; } }
+  </style>
+</head>
+<body>
+  <main id="student-screen" class="screen" aria-label="かんじとえのもんだい">
+    <div id="kanji" class="kanji" aria-live="polite"></div>
+    <div id="choices" class="choices" aria-label="えをえらぶ"></div>
+  </main>
+
+  <section id="complete-screen" class="screen" aria-live="polite">できました。<br>先生に知らせましょう。</section>
+  <div id="message" role="status" aria-live="assertive"></div>
+  <div id="teacher-trigger" aria-hidden="true"></div>
+
+  <section id="teacher-screen" class="screen" aria-label="きょうしようがめん">
+    <div class="teacher-panel">
+      <h1>教師用画面</h1>
+      <div id="pin-area">
+        <p>パスコードを入力してください。</p>
+        <div class="pin-row">
+          <input id="pin-input" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" aria-label="4けたのパスコード">
+          <button id="unlock-button" class="teacher-button primary" type="button">開く</button>
+        </div>
+        <p id="pin-error" role="alert"></p>
+      </div>
+      <div id="teacher-content" hidden>
+        <h2>口頭で確認する漢字</h2>
+        <p>生徒に「この漢字は何て読みますか」と聞いてください。</p>
+        <div id="teacher-kanji" class="teacher-check"></div>
+        <div class="teacher-actions">
+          <button id="new-check-button" class="teacher-button" type="button">別の漢字を出す</button>
+          <button id="close-teacher-button" class="teacher-button" type="button">生徒用画面へ戻る</button>
+        </div>
+
+        <h2>学習の記録</h2>
+        <p class="notice">記録はこのiPadのSafari内にのみ保存されます。SafariのWebサイトデータを消去したり、iPadを初期化・交換したりすると記録は消えます。</p>
+        <div id="history" class="history-wrap"></div>
+        <div class="teacher-actions" style="margin-top:18px">
+          <button id="clear-today-button" class="teacher-button danger" type="button">今日の記録を消去</button>
+          <button id="clear-all-button" class="teacher-button danger" type="button">すべての記録を消去</button>
+        </div>
+      </div>
+    </div>
+  </section>
+  <div class="orientation-note">iPadを横向きにしてください。</div>
+
+  <script>
+    (() => {
+      'use strict';
+
+      const TEACHER_PIN = '2580'; // 試作用。公開版では、教師が変更できる仕組みを追加する。
+      const STORAGE_KEY = 'kanji-matching-history-v1';
+      const words = [
+        { kanji: '山', picture: 'mountain' },
+        { kanji: '川', picture: 'river' },
+        { kanji: '水', picture: 'water' },
+        { kanji: '木', picture: 'tree' },
+        { kanji: '空', picture: 'sky' }
+      ];
+
+      const kanjiEl = document.querySelector('#kanji');
+      const choicesEl = document.querySelector('#choices');
+      const messageEl = document.querySelector('#message');
+      const studentScreen = document.querySelector('#student-screen');
+      const completeScreen = document.querySelector('#complete-screen');
+      const teacherScreen = document.querySelector('#teacher-screen');
+      const teacherTrigger = document.querySelector('#teacher-trigger');
+      const pinArea = document.querySelector('#pin-area');
+      const teacherContent = document.querySelector('#teacher-content');
+      const pinInput = document.querySelector('#pin-input');
+      const pinError = document.querySelector('#pin-error');
+      const teacherKanji = document.querySelector('#teacher-kanji');
+      const historyEl = document.querySelector('#history');
+
+      let queue = [];
+      let currentIndex = 0;
+      let results = {};
+      let locked = false;
+      let completedWords = [];
+      let longPressTimer = null;
+
+      const shuffle = (items) => [...items].sort(() => Math.random() - 0.5);
+      const today = () => new Intl.DateTimeFormat('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+      const now = () => new Intl.DateTimeFormat('ja-JP', { hour: '2-digit', minute: '2-digit' }).format(new Date());
+
+      function pictureSvg(name) {
+        const base = 'viewBox="0 0 240 180" role="img" aria-label="え"';
+        const drawings = {
+          mountain: `<svg ${base}><rect width="240" height="180" rx="18" fill="#dff2ff"/><path d="M25 145 95 42l42 60 22-32 58 75Z" fill="#6eaa55" stroke="#1d4624" stroke-width="5"/><path d="m83 60 12-18 13 19-12 8Z" fill="#fff"/><path d="m150 83 9-13 10 14-9 7Z" fill="#fff"/><path d="M24 145h192" stroke="#396e35" stroke-width="8" stroke-linecap="round"/></svg>`,
+          river: `<svg ${base}><rect width="240" height="180" rx="18" fill="#dff2ff"/><path d="M94 0c-20 35 20 46 0 82s18 49 0 98h62c19-42-21-59 0-98s-21-48 0-82Z" fill="#49a9e8"/><path d="M107 15c-13 26 19 39 0 63" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round"/><path d="M123 106c-12 20 17 31 0 55" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round"/><path d="M0 0h74v180H0zM166 0h74v180h-74z" fill="#86be65"/></svg>`,
+          water: `<svg ${base}><rect width="240" height="180" rx="18" fill="#dff2ff"/><path d="M120 22C92 61 77 82 77 108a43 43 0 0 0 86 0c0-26-15-47-43-86Z" fill="#38a9e8" stroke="#176492" stroke-width="5"/><path d="M106 116c3 12 12 18 23 20" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round"/></svg>`,
+          tree: `<svg ${base}><rect width="240" height="180" rx="18" fill="#dff2ff"/><rect x="104" y="94" width="32" height="65" rx="8" fill="#9a613b"/><circle cx="120" cy="64" r="48" fill="#70b94f" stroke="#286b31" stroke-width="5"/><circle cx="82" cy="82" r="32" fill="#85c95b"/><circle cx="158" cy="82" r="32" fill="#85c95b"/><path d="M28 160h184" stroke="#63a646" stroke-width="10" stroke-linecap="round"/></svg>`,
+          sky: `<svg ${base}><rect width="240" height="180" rx="18" fill="#77c7f0"/><circle cx="178" cy="43" r="22" fill="#ffd94b"/><g fill="#fff"><path d="M36 119c0-14 12-25 26-25 8 0 15 3 20 9 5-13 17-22 32-22 19 0 35 16 35 35v3Z"/><path d="M127 142c0-11 9-20 20-20 6 0 12 3 16 7 4-10 13-16 24-16 14 0 25 12 25 26v3Z"/></g></svg>`
+        };
+        return drawings[name];
+      }
+
+      function currentWord() { return queue[currentIndex]; }
+
+      function showQuestion() {
+        const word = currentWord();
+        kanjiEl.textContent = word.kanji;
+        const choices = shuffle([word, ...shuffle(words.filter((item) => item.kanji !== word.kanji)).slice(0, 2)]);
+        choicesEl.replaceChildren(...choices.map((choice) => {
+          const button = document.createElement('button');
+          button.className = 'choice';
+          button.type = 'button';
+          button.setAttribute('aria-label', 'このえをえらぶ');
+          button.innerHTML = pictureSvg(choice.picture);
+          button.addEventListener('click', () => answer(choice.kanji === word.kanji));
+          return button;
+        }));
+      }
+
+      function flash(text, className, duration, after) {
+        messageEl.textContent = text;
+        messageEl.className = `show ${className}`;
+        window.setTimeout(() => {
+          messageEl.className = '';
+          after();
+        }, duration);
+      }
+
+      function answer(isCorrect) {
+        if (locked) return;
+        locked = true;
+        const word = currentWord();
+        const result = results[word.kanji];
+        if (!isCorrect) {
+          if (result.firstCorrect === null) result.firstCorrect = false;
+          result.errors += 1;
+          flash('もういちど', 'retry', 900, () => { locked = false; });
+          return;
+        }
+        if (result.firstCorrect === null) result.firstCorrect = true;
+        completedWords.push(word.kanji);
+        flash('○', 'correct', 1000, () => {
+          currentIndex += 1;
+          locked = false;
+          if (currentIndex < queue.length) showQuestion(); else finishSession();
+        });
+      }
+
+      function finishSession() {
+        saveSession();
+        studentScreen.hidden = true;
+        completeScreen.classList.add('show');
+      }
+
+      function saveSession() {
+        const history = getHistory();
+        history.push({ date: today(), time: now(), results });
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+      }
+
+      function getHistory() {
+        try {
+          const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+          return Array.isArray(parsed) ? parsed : [];
+        } catch { return []; }
+      }
+
+      function startSession() {
+        queue = shuffle(words);
+        currentIndex = 0;
+        completedWords = [];
+        results = Object.fromEntries(words.map((word) => [word.kanji, { firstCorrect: null, errors: 0 }]));
+        studentScreen.hidden = false;
+        completeScreen.classList.remove('show');
+        showQuestion();
+      }
+
+      function showTeacherScreen() {
+        studentScreen.hidden = true;
+        completeScreen.classList.remove('show');
+        teacherScreen.classList.add('show');
+        pinArea.hidden = false;
+        teacherContent.hidden = true;
+        pinInput.value = '';
+        pinError.textContent = '';
+        pinInput.focus();
+      }
+
+      function openTeacherContent() {
+        if (pinInput.value !== TEACHER_PIN) {
+          pinError.textContent = 'パスコードが違います。';
+          pinInput.select();
+          return;
+        }
+        pinArea.hidden = true;
+        teacherContent.hidden = false;
+        showTeacherKanji();
+        renderHistory();
+      }
+
+      function showTeacherKanji() {
+        const source = completedWords.length ? completedWords : words.map((word) => word.kanji);
+        teacherKanji.textContent = source[Math.floor(Math.random() * source.length)];
+      }
+
+      function renderHistory() {
+        const history = getHistory().slice().reverse();
+        if (!history.length) {
+          historyEl.innerHTML = '<p class="empty">まだ記録はありません。</p>';
+          return;
+        }
+        const cells = (record) => words.map(({ kanji }) => {
+          const result = record.results?.[kanji];
+          if (!result) return '<td>―</td>';
+          return `<td><strong>${result.firstCorrect ? '○' : '×'}</strong><br>誤答 ${result.errors}回</td>`;
+        }).join('');
+        historyEl.innerHTML = `<table><thead><tr><th>日付</th><th>時刻</th>${words.map(({ kanji }) => `<th>${kanji}</th>`).join('')}</tr></thead><tbody>${history.map((record) => `<tr><td>${record.date}</td><td>${record.time}</td>${cells(record)}</tr>`).join('')}</tbody></table>`;
+      }
+
+      function closeTeacherScreen() {
+        teacherScreen.classList.remove('show');
+        startSession();
+      }
+
+      function clearHistory(mode) {
+        const message = mode === 'today' ? '今日の記録を消去しますか？' : 'すべての記録を消去しますか？';
+        if (!window.confirm(message)) return;
+        const next = mode === 'today' ? getHistory().filter((record) => record.date !== today()) : [];
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+        renderHistory();
+      }
+
+      function beginLongPress(event) {
+        event.preventDefault();
+        longPressTimer = window.setTimeout(showTeacherScreen, 900);
+      }
+      function cancelLongPress() { window.clearTimeout(longPressTimer); }
+
+      teacherTrigger.addEventListener('pointerdown', beginLongPress);
+      ['pointerup', 'pointercancel', 'pointerleave'].forEach((event) => teacherTrigger.addEventListener(event, cancelLongPress));
+      document.querySelector('#unlock-button').addEventListener('click', openTeacherContent);
+      pinInput.addEventListener('keydown', (event) => { if (event.key === 'Enter') openTeacherContent(); });
+      document.querySelector('#new-check-button').addEventListener('click', showTeacherKanji);
+      document.querySelector('#close-teacher-button').addEventListener('click', closeTeacherScreen);
+      document.querySelector('#clear-today-button').addEventListener('click', () => clearHistory('today'));
+      document.querySelector('#clear-all-button').addEventListener('click', () => clearHistory('all'));
+
+      startSession();
+    })();
+  </script>
+</body>
+</html>
